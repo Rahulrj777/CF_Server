@@ -1,6 +1,6 @@
 import express from "express";
 import fs from "fs";
-import { getMulterUpload } from "../utils/cloudinaryUpload.js";
+import { getMulterUpload } from "../../Cloudinary/cloudinary.js";
 import { v2 as cloudinary } from "cloudinary";
 
 const router = express.Router();
