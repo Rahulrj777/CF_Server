@@ -1,87 +1,54 @@
 import express from "express";
-import multer from "multer";
 import fs from "fs";
-import path from "path";
+import { getMulterUpload } from "../utils/cloudinaryUpload.js";
+import { v2 as cloudinary } from "cloudinary";
 
 const router = express.Router();
+const DATA_DIR = "data/acting";
+const BANNERS_JSON = `${DATA_DIR}/banner.json`;
 
-// 📁 Paths
-const UPLOADS_DIR = path.join(process.cwd(), "uploads/acting/banner"); 
-const DATA_DIR = path.join(process.cwd(), "data/acting");
-const BANNERS_JSON = path.join(DATA_DIR, "banner.json");
+// Ensure data folder & JSON exist
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(BANNERS_JSON)) fs.writeFileSync(BANNERS_JSON, JSON.stringify([]));
 
-// ✅ Ensure uploads folder exists
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
+// Multer for Cloudinary
+const upload = getMulterUpload("acting/banner");
 
-// ✅ Ensure data/acting folder exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+// Upload banner
+router.post("/upload", upload.single("image"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-// ✅ Ensure banner.json exists
-if (!fs.existsSync(BANNERS_JSON)) {
-  fs.writeFileSync(BANNERS_JSON, JSON.stringify([]));
-}
-
-// Multer config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) =>
-    cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, "_")),
-});
-
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) cb(null, true);
-    else cb(new Error("Only image files are allowed!"), false);
-  },
-});
-
-// 📌 Upload banner
-router.post("/upload", upload.single("image"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No image uploaded" });
-
-  const bannerData = {
+  const banner = {
     id: Date.now(),
-    fileName: req.file.filename,
-    url: `http://localhost:5000/uploads/acting/banner/${req.file.filename}`,
+    public_id: req.file.filename,
+    url: req.file.path,
   };
 
-  let existing = [];
-  try {
-    existing = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
-  } catch {}
+  const banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
+  banners.push(banner);
+  fs.writeFileSync(BANNERS_JSON, JSON.stringify(banners, null, 2));
 
-  existing.push(bannerData);
-  fs.writeFileSync(BANNERS_JSON, JSON.stringify(existing, null, 2));
-
-  res.json(bannerData);
+  res.json(banner);
 });
 
-// 📌 Get all banners
+// Get all banners
 router.get("/", (req, res) => {
-  let banners = [];
-  try {
-    banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
-  } catch {}
+  const banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
   res.json(banners);
 });
 
-// 📌 Delete banner by filename
-router.delete("/:filename", (req, res) => {
-  const { filename } = req.params;
-  let banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
-
-  banners = banners.filter((b) => b.fileName !== filename);
+// Delete banner
+router.delete("/:public_id", async (req, res) => {
+  const { public_id } = req.params;
+  const banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8")).filter(b => b.public_id !== public_id);
   fs.writeFileSync(BANNERS_JSON, JSON.stringify(banners, null, 2));
 
-  fs.unlink(path.join(UPLOADS_DIR, filename), (err) => {
-    if (err) return res.status(500).json({ error: "Error deleting file" });
-    res.json({ success: true, message: "Banner deleted successfully" });
-  });
+  try {
+    await cloudinary.uploader.destroy(`acting/banner/${public_id}`, { resource_type: "image" });
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Error deleting file from Cloudinary" });
+  }
 });
 
 export default router;
