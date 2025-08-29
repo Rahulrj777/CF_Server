@@ -11,7 +11,6 @@ const BANNERS_JSON = `${DATA_DIR}/banner.json`;
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(BANNERS_JSON)) fs.writeFileSync(BANNERS_JSON, JSON.stringify([]));
 
-// Multer for Cloudinary
 const upload = getMulterUpload("acting/banner");
 
 // Upload banner
@@ -20,8 +19,8 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 
   const banner = {
     id: Date.now(),
-    public_id: req.file.filename,
-    url: req.file.path,
+    public_id: req.file.filename, // Cloudinary public_id
+    url: req.file.path,           // Cloudinary URL
   };
 
   const banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
@@ -40,13 +39,15 @@ router.get("/", (req, res) => {
 // Delete banner
 router.delete("/:public_id", async (req, res) => {
   const { public_id } = req.params;
-  const banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8")).filter(b => b.public_id !== public_id);
+  let banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
+  banners = banners.filter(b => b.public_id !== public_id);
   fs.writeFileSync(BANNERS_JSON, JSON.stringify(banners, null, 2));
 
   try {
     await cloudinary.uploader.destroy(`acting/banner/${public_id}`, { resource_type: "image" });
     res.json({ success: true });
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Error deleting file from Cloudinary" });
   }
 });
