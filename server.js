@@ -4,27 +4,27 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import { fileURLToPath } from "url"
+import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ✅ Enable CORS for frontend
+// ✅ CORS
 app.use(
   cors({
     origin: [
-      "http://localhost:5173", 
+      "http://localhost:5173",
       "http://localhost:3000",
       "https://cf-admin.vercel.app",
-      "https://cf-user.vercel.app"
+      "https://cf-user.vercel.app",
     ],
     credentials: true,
-    methods: ["GET", "POST", "DELETE", "PUT"]
+    methods: ["GET", "POST", "DELETE", "PUT"],
   })
 );
 
@@ -34,13 +34,19 @@ app.use(express.json());
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
 
-// ✅ Basic test route
+// ✅ Test route
 app.get("/", (req, res) => {
   res.send("Backend is running 🚀");
 });
 
+//=================
+//   EXTRA INPUT
+//=================
+
+import authRoutes from "./Routes/authRoutes.js";
+
 // -------------------------
-// ✅ Import routes
+// ✅ Routes Import
 // -------------------------
 import HomeBanner from "./Routes/Home/HomeBannerRoutes.js";
 import VideoRoutes from "./Routes/Home/VideoGalleryRoutes.js";
@@ -102,9 +108,13 @@ import StageUnrealDiploma from "./Routes/StageUnreal/StageUnrealDiploma.js";
 import StageUnrealMentor from "./Routes/StageUnreal/StageUnrealMentor.js";
 import StageUnrealFilmography from "./Routes/StageUnreal/StageUnrealFilmography.js";
 
-app.use("/uploads", express.static(path.join(__dirname, "uploads")))
+// ✅ Serve uploads folder
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// ✅ Use routes
+// ✅ Auth
+app.use("/auth", authRoutes);
+
+// ✅ Register routes
 app.use("/homebanner", HomeBanner);
 app.use("/exclusive", HomeExclusive);
 app.use("/videos", VideoRoutes);
@@ -165,7 +175,7 @@ app.use("/stageunrealdiploma", StageUnrealDiploma);
 app.use("/stageunrealmentor", StageUnrealMentor);
 app.use("/stageunrealfilmography", StageUnrealFilmography);
 
-// ✅ Connect to MongoDB
+// ✅ MongoDB connection
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
@@ -177,7 +187,7 @@ mongoose
     process.exit(1);
   });
 
-// ✅ Start server AFTER everything is set
+// ✅ Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
