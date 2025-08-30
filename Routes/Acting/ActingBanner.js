@@ -12,7 +12,7 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 
     const base64 = req.file.buffer.toString("base64");
     const banner = new Banner({
-      url: `data:${req.file.mimetype};base64,${base64}`, // store as Base64
+      url: `data:${req.file.mimetype};base64,${base64}`,
       title: req.body.title || "Untitled",
     });
 
