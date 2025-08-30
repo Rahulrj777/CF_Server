@@ -17,7 +17,12 @@ app.listen(PORT, () => {
 // ✅ Enable CORS for frontend
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"],
+    origin: [
+      "http://localhost:5173", 
+      "http://localhost:3000",
+      "https://cf-admin.vercel.app",
+      "https://cf-user.vercel.app"
+    ],
     credentials: true,
     methods: ["GET", "POST", "DELETE","PUT"],
     allowedHeaders: ["Content-Type", "Range"],
