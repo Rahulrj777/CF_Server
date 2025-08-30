@@ -1,24 +1,25 @@
 import express from "express";
-import { Banner } from "../../Model/Acting/ActingBanner.js";
 import multer from "multer";
+import { Banner } from "../../Model/Acting/ActingBanner.js";
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() }); // store in memory
+const upload = multer({ storage: multer.memoryStorage() }); // store file in memory
 
-// Upload banner (store image in MongoDB as Base64)
+// Upload banner (store image as Base64 in MongoDB)
 router.post("/upload", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     const base64 = req.file.buffer.toString("base64");
     const banner = new Banner({
-      url: `data:${req.file.mimetype};base64,${base64}`,
+      url: `data:${req.file.mimetype};base64,${base64}`, // store as Base64
       title: req.body.title || "Untitled",
     });
 
     await banner.save();
     res.json(banner);
   } catch (err) {
+    console.error("Upload error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
