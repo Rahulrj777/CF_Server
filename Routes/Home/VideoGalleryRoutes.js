@@ -1,71 +1,82 @@
 import express from "express";
 import multer from "multer";
-import fs from "fs";
-import path from "path";
+import cloudinary from "../../Utils/cloudinary.js";
+import Home from "../../Models/Home.js";
 
 const router = express.Router();
 
-const VIDEO_DIR = path.join(process.cwd(), "uploads/home/videos");
-const VIDEOS_JSON = path.join(process.cwd(), "data/home/videos.json");
+// ✅ Multer (in-memory)
+const storage = multer.diskStorage({});
+const upload = multer({ storage });
 
-if (!fs.existsSync(VIDEO_DIR)) {
-  fs.mkdirSync(VIDEO_DIR, { recursive: true });
-}
-if (!fs.existsSync(VIDEOS_JSON)) fs.writeFileSync(VIDEOS_JSON, JSON.stringify([]));
+// ✅ Ensure Home doc exists
+const getHomeDoc = async () => {
+  let home = await Home.findOne();
+  if (!home) home = await Home.create({});
+  return home;
+};
 
-// Multer config for videos
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, VIDEO_DIR),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
-});
-
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("video/")) cb(null, true);
-    else cb(new Error("Only video files are allowed!"), false);
-  },
-});
-
-// Upload video
-router.post("/upload", upload.single("video"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No video uploaded" });
-
-  const { title } = req.body;
-  if (!title || title.trim() === "") {
-    return res.status(400).json({ error: "Title is required" });
+// 📌 Get all videos
+router.get("/", async (req, res) => {
+  try {
+    const home = await getHomeDoc();
+    res.json(home.videoGallery);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const videoData = {
-    title: title.trim(),
-    fileName: req.file.filename,
-    url: `http://localhost:5000/uploads/home/videos/${req.file.filename}`,
-  };
-
-  const existing = JSON.parse(fs.readFileSync(VIDEOS_JSON, "utf-8"));
-  existing.push(videoData);
-  fs.writeFileSync(VIDEOS_JSON, JSON.stringify(existing, null, 2));
-
-  res.json(videoData);
 });
 
-// Get videos
-router.get("/", (req, res) => {
-  const videos = JSON.parse(fs.readFileSync(VIDEOS_JSON, "utf-8"));
-  res.json(videos);
+// 📌 Upload video
+router.post("/upload", upload.single("video"), async (req, res) => {
+  try {
+    const { title } = req.body;
+    if (!req.file || !title || title.trim() === "") {
+      return res.status(400).json({ error: "Video file and title are required" });
+    }
+
+    // Upload video to Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      resource_type: "video",
+      folder: "home/videos",
+    });
+
+    // Save in MongoDB
+    const home = await getHomeDoc();
+    const newVideo = {
+      _id: Date.now().toString(),
+      videoUrl: result.secure_url,
+      publicId: result.public_id,
+      title: title.trim(),
+    };
+
+    home.videoGallery.push(newVideo);
+    await home.save();
+
+    res.json(newVideo);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Delete video
-router.delete("/:filename", (req, res) => {
-  const { filename } = req.params;
-  let videos = JSON.parse(fs.readFileSync(VIDEOS_JSON, "utf-8"));
-  videos = videos.filter((v) => v.fileName !== filename);
-  fs.writeFileSync(VIDEOS_JSON, JSON.stringify(videos, null, 2));
+// 📌 Delete video
+router.delete("/:id", async (req, res) => {
+  try {
+    const home = await getHomeDoc();
+    const video = home.videoGallery.find((v) => v._id === req.params.id);
 
-  fs.unlink(path.join(VIDEO_DIR, filename), (err) => {
-    if (err) return res.status(500).json({ error: "Error deleting file" });
+    if (!video) return res.status(404).json({ error: "Video not found" });
+
+    // Delete from Cloudinary
+    await cloudinary.uploader.destroy(video.publicId, { resource_type: "video" });
+
+    // Remove from MongoDB
+    home.videoGallery = home.videoGallery.filter((v) => v._id !== req.params.id);
+    await home.save();
+
     res.json({ success: true, message: "Video deleted successfully" });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;

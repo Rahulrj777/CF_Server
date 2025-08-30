@@ -1,78 +1,77 @@
 import express from "express";
 import multer from "multer";
-import fs from "fs";
-import path from "path";
+import cloudinary from "../../Utils/cloudinary.js";
+import Home from "../../Models/Home.js";
 
 const router = express.Router();
 
-const MENTOR_DIR = path.join(process.cwd(), "uploads/home/mentors");
-const DATA_DIR = path.join(process.cwd(), "data/home");
-const MENTORS_JSON = path.join(DATA_DIR, "mentors.json");
+// ✅ Multer (in-memory)
+const storage = multer.diskStorage({});
+const upload = multer({ storage });
 
-// Ensure folders exist
-if (!fs.existsSync(MENTOR_DIR)) fs.mkdirSync(MENTOR_DIR, { recursive: true });
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(MENTORS_JSON)) fs.writeFileSync(MENTORS_JSON, JSON.stringify([]));
+// ✅ Ensure Home doc exists
+const getHomeDoc = async () => {
+  let home = await Home.findOne();
+  if (!home) home = await Home.create({});
+  return home;
+};
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, MENTOR_DIR),
-  filename: (req, file, cb) =>
-    cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, "_")),
-});
-
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) cb(null, true);
-    else cb(new Error("Only image files are allowed!"), false);
-  },
+// 📌 Get all mentors
+router.get("/", async (req, res) => {
+  try {
+    const home = await getHomeDoc();
+    res.json(home.mentors);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // 📌 Upload mentor image
-router.post("/upload", upload.single("image"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No image uploaded" });
-
-  const mentorData = {
-    id: Date.now(),
-    fileName: req.file.filename,
-    url: `${process.env.SERVER_URL || "http://localhost:5000"}/uploads/home/mentors/${req.file.filename}`,
-  };
-
-  let existing = [];
+router.post("/upload", upload.single("image"), async (req, res) => {
   try {
-    existing = JSON.parse(fs.readFileSync(MENTORS_JSON, "utf-8"));
-  } catch {
-    existing = [];
-  }
+    if (!req.file) return res.status(400).json({ error: "No image uploaded" });
 
-  existing.push(mentorData);
-  fs.writeFileSync(MENTORS_JSON, JSON.stringify(existing, null, 2));
+    // Upload to Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "home/mentors",
+    });
 
-  res.json(mentorData);
-});
+    // Save in MongoDB
+    const home = await getHomeDoc();
+    const newMentor = {
+      _id: Date.now().toString(),
+      imageUrl: result.secure_url,
+      publicId: result.public_id,
+    };
 
-// 📌 Get all mentors
-router.get("/", (req, res) => {
-  try {
-    const mentors = JSON.parse(fs.readFileSync(MENTORS_JSON, "utf-8"));
-    res.json(mentors);
-  } catch {
-    res.json([]);
+    home.mentors.push(newMentor);
+    await home.save();
+
+    res.json(newMentor);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
 // 📌 Delete mentor
-router.delete("/:filename", (req, res) => {
-  const { filename } = req.params;
-  let mentors = JSON.parse(fs.readFileSync(MENTORS_JSON, "utf-8"));
+router.delete("/:id", async (req, res) => {
+  try {
+    const home = await getHomeDoc();
+    const mentor = home.mentors.find((m) => m._id === req.params.id);
 
-  mentors = mentors.filter((m) => m.fileName !== filename);
-  fs.writeFileSync(MENTORS_JSON, JSON.stringify(mentors, null, 2));
+    if (!mentor) return res.status(404).json({ error: "Mentor not found" });
 
-  fs.unlink(path.join(MENTOR_DIR, filename), (err) => {
-    if (err) return res.status(500).json({ error: "Error deleting file" });
+    // Delete from Cloudinary
+    await cloudinary.uploader.destroy(mentor.publicId);
+
+    // Remove from MongoDB
+    home.mentors = home.mentors.filter((m) => m._id !== req.params.id);
+    await home.save();
+
     res.json({ success: true, message: "Mentor deleted successfully" });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;

@@ -1,87 +1,76 @@
 import express from "express";
 import multer from "multer";
-import fs from "fs";
-import path from "path";
+import cloudinary from "../../Utils/cloudinary.js";
+import Home from "../../Models/Home.js";
 
 const router = express.Router();
 
-// 📁 Paths
-const UPLOADS_DIR = path.join(process.cwd(), "uploads/home/banner"); 
-const DATA_DIR = path.join(process.cwd(), "data/home"); 
-const BANNERS_JSON = path.join(DATA_DIR, "banner.json");
+// ✅ Multer (no disk, directly to Cloudinary)
+const storage = multer.diskStorage({});
+const upload = multer({ storage });
 
-// ✅ Ensure uploads folder exists
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
-
-// ✅ Ensure data/home folder exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-// ✅ Ensure banner.json exists
-if (!fs.existsSync(BANNERS_JSON)) {
-  fs.writeFileSync(BANNERS_JSON, JSON.stringify([]));
-}
-
-// Multer config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) =>
-    cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, "_")),
-});
-
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) cb(null, true);
-    else cb(new Error("Only image files are allowed!"), false);
-  },
-});
+// ✅ Ensure a single Home document exists
+const getHomeDoc = async () => {
+  let home = await Home.findOne();
+  if (!home) home = await Home.create({});
+  return home;
+};
 
 // 📌 Upload banner
-router.post("/upload", upload.single("image"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No image uploaded" });
-
-  const bannerData = {
-    id: Date.now(),
-    fileName: req.file.filename,
-    url: `http://localhost:5000/uploads/home/banner/${req.file.filename}`,
-  };
-
-  let existing = [];
+router.post("/upload", upload.single("image"), async (req, res) => {
   try {
-    existing = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
-  } catch {}
+    if (!req.file) return res.status(400).json({ error: "No image uploaded" });
 
-  existing.push(bannerData);
-  fs.writeFileSync(BANNERS_JSON, JSON.stringify(existing, null, 2));
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "home/banner",
+    });
 
-  res.json(bannerData);
+    const home = await getHomeDoc();
+    const bannerData = {
+      _id: Date.now().toString(), // custom ID for delete
+      imageUrl: result.secure_url,
+      publicId: result.public_id,
+    };
+
+    home.banner.push(bannerData);
+    await home.save();
+
+    res.json(bannerData);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // 📌 Get all banners
-router.get("/", (req, res) => {
-  let banners = [];
+router.get("/", async (req, res) => {
   try {
-    banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
-  } catch {}
-  res.json(banners);
+    const home = await getHomeDoc();
+    res.json(home.banner);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// 📌 Delete banner by filename
-router.delete("/:filename", (req, res) => {
-  const { filename } = req.params;
-  let banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
+// 📌 Delete banner
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const home = await getHomeDoc();
 
-  banners = banners.filter((b) => b.fileName !== filename);
-  fs.writeFileSync(BANNERS_JSON, JSON.stringify(banners, null, 2));
+    const banner = home.banner.find((b) => b._id === id);
+    if (!banner) return res.status(404).json({ error: "Banner not found" });
 
-  fs.unlink(path.join(UPLOADS_DIR, filename), (err) => {
-    if (err) return res.status(500).json({ error: "Error deleting file" });
+    // Delete from Cloudinary
+    await cloudinary.uploader.destroy(banner.publicId);
+
+    // Remove from MongoDB
+    home.banner = home.banner.filter((b) => b._id !== id);
+    await home.save();
+
     res.json({ success: true, message: "Banner deleted successfully" });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;

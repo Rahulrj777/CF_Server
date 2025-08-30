@@ -1,75 +1,76 @@
 import express from "express";
 import multer from "multer";
-import fs from "fs";
-import path from "path";
+import cloudinary from "../../Utils/cloudinary.js";
+import Home from "../../Models/Home.js";
 
 const router = express.Router();
 
-// Folder paths
-const uploadDir = path.join(process.cwd(), "uploads/home/filmography");
-const dataFile = path.join(process.cwd(), "data/home/filmography.json");
-
-// Ensure directories exist
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-if (!fs.existsSync(path.dirname(dataFile))) fs.mkdirSync(path.dirname(dataFile), { recursive: true });
-if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify([]));
-
-// Multer storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
-});
-
+// ✅ Multer (keep in memory)
+const storage = multer.diskStorage({});
 const upload = multer({ storage });
 
-// Get all filmography items
-router.get("/", (req, res) => {
+// ✅ Ensure Home doc exists
+const getHomeDoc = async () => {
+  let home = await Home.findOne();
+  if (!home) home = await Home.create({});
+  return home;
+};
+
+// 📌 Get all filmography items
+router.get("/", async (req, res) => {
   try {
-    const data = JSON.parse(fs.readFileSync(dataFile));
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ message: "Error reading filmography data" });
+    const home = await getHomeDoc();
+    res.json(home.filmography);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Upload new image
-router.post("/upload", upload.single("image"), (req, res) => {
+// 📌 Upload new filmography image
+router.post("/upload", upload.single("image"), async (req, res) => {
   try {
-    const data = JSON.parse(fs.readFileSync(dataFile));
+    if (!req.file) return res.status(400).json({ message: "Image is required" });
 
+    // Upload to Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "home/filmography",
+    });
+
+    // Save in MongoDB
+    const home = await getHomeDoc();
     const newItem = {
-      id: Date.now(),
-      image: `/uploads/home/filmography/${req.file.filename}`,
+      _id: Date.now().toString(),
+      imageUrl: result.secure_url,
+      publicId: result.public_id,
     };
 
-    data.push(newItem);
-    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+    home.filmography.push(newItem);
+    await home.save();
 
     res.status(201).json({ message: "Uploaded successfully", item: newItem });
-  } catch (error) {
-    res.status(500).json({ message: "Error saving filmography data" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Delete filmography item
-router.delete("/:id", (req, res) => {
+// 📌 Delete filmography item
+router.delete("/:id", async (req, res) => {
   try {
-    const data = JSON.parse(fs.readFileSync(dataFile));
-    const item = data.find((d) => d.id === parseInt(req.params.id));
+    const home = await getHomeDoc();
+    const item = home.filmography.find((f) => f._id === req.params.id);
 
     if (!item) return res.status(404).json({ message: "Not found" });
 
-    // Delete image file
-    const filePath = path.join(process.cwd(), item.image);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    // Remove from Cloudinary
+    await cloudinary.uploader.destroy(item.publicId);
 
-    // Update JSON
-    const updatedData = data.filter((d) => d.id !== parseInt(req.params.id));
-    fs.writeFileSync(dataFile, JSON.stringify(updatedData, null, 2));
+    // Remove from MongoDB
+    home.filmography = home.filmography.filter((f) => f._id !== req.params.id);
+    await home.save();
 
     res.json({ message: "Deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ message: "Error deleting filmography item" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

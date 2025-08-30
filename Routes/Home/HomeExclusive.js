@@ -1,66 +1,80 @@
 import express from "express";
 import multer from "multer";
-import fs from "fs";
-import path from "path";
+import cloudinary from "../../Utils/cloudinary.js";
+import Home from "../../Models/Home.js";
 
 const router = express.Router();
 
-// 📁 Paths
-const UPLOADS_DIR = path.join(process.cwd(), "uploads/home/exclusive");
-const DATA_DIR = path.join(process.cwd(), "data/home");
-const JSON_FILE = path.join(DATA_DIR, "exclusive.json");
-
-// ✅ Ensure folders exist
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(JSON_FILE)) fs.writeFileSync(JSON_FILE, JSON.stringify([]));
-
-// 📌 Multer setup
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
+// ✅ Multer (store in memory, not local disk)
+const storage = multer.diskStorage({});
 const upload = multer({ storage });
 
+// ✅ Ensure a single Home doc exists
+const getHomeDoc = async () => {
+  let home = await Home.findOne();
+  if (!home) home = await Home.create({});
+  return home;
+};
+
 // 📌 Get all exclusive items
-router.get("/", (req, res) => {
-  const data = JSON.parse(fs.readFileSync(JSON_FILE));
-  res.json(data);
+router.get("/", async (req, res) => {
+  try {
+    const home = await getHomeDoc();
+    res.json(home.exclusive);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// 📌 Add new item (only 1 image + 1 text)
-router.post("/", upload.single("image"), (req, res) => {
-  if (!req.file || !req.body.titleLine)
-    return res.status(400).json({ message: "Image and text required" });
+// 📌 Add new exclusive item (image + text)
+router.post("/", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file || !req.body.titleLine) {
+      return res.status(400).json({ message: "Image and text required" });
+    }
 
-  const newItem = {
-    id: Date.now(),
-    image: `/uploads/home/exclusive/${req.file.filename}`,
-    titleLine: req.body.titleLine,
-  };
+    // Upload to Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "home/exclusive",
+    });
 
-  const data = JSON.parse(fs.readFileSync(JSON_FILE));
-  data.push(newItem);
-  fs.writeFileSync(JSON_FILE, JSON.stringify(data, null, 2));
+    // Save in MongoDB
+    const home = await getHomeDoc();
+    const newItem = {
+      _id: Date.now().toString(), // custom ID for delete
+      imageUrl: result.secure_url,
+      publicId: result.public_id,
+      titleLine: req.body.titleLine,
+    };
 
-  res.json(newItem);
+    home.exclusive.push(newItem);
+    await home.save();
+
+    res.json(newItem);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// 📌 Delete item
-router.delete("/:id", (req, res) => {
-  const data = JSON.parse(fs.readFileSync(JSON_FILE));
-  const index = data.findIndex((i) => i.id == req.params.id);
-  if (index === -1) return res.status(404).json({ message: "Item not found" });
+// 📌 Delete exclusive item
+router.delete("/:id", async (req, res) => {
+  try {
+    const home = await getHomeDoc();
+    const item = home.exclusive.find((e) => e._id === req.params.id);
 
-  const imgPath = path.join(UPLOADS_DIR, path.basename(data[index].image));
-  if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+    if (!item) return res.status(404).json({ message: "Item not found" });
 
-  data.splice(index, 1);
-  fs.writeFileSync(JSON_FILE, JSON.stringify(data, null, 2));
+    // Delete from Cloudinary
+    await cloudinary.uploader.destroy(item.publicId);
 
-  res.json({ message: "Deleted successfully" });
+    // Remove from MongoDB
+    home.exclusive = home.exclusive.filter((e) => e._id !== req.params.id);
+    await home.save();
+
+    res.json({ message: "Deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;
