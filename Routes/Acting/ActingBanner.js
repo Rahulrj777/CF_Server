@@ -10,17 +10,19 @@ router.post("/upload", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-    const base64 = req.file.buffer.toString("base64");
+    console.log("Uploaded file:", req.file); // ✅ Debug
 
+    const base64 = req.file.buffer.toString("base64");
     const banner = new Banner({
-      url: `data:${req.file.mimetype};base64,${base64}`, // store Base64 in MongoDB
+      url: `data:${req.file.mimetype};base64,${base64}`,
       title: req.body.title || "Untitled",
     });
 
     await banner.save();
+    console.log("Saved banner:", banner); // ✅ Debug
     res.json(banner);
   } catch (err) {
-    console.error("Upload error:", err.message);
+    console.error("Upload error:", err);
     res.status(500).json({ error: err.message });
   }
 });
