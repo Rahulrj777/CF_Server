@@ -5,21 +5,15 @@ import path from "path";
 
 const router = express.Router();
 
-const MENTOR_DIR = path.join(process.cwd(), "uploads/home/mentors"); // images
-const DATA_DIR = path.join(process.cwd(), "data/home");               // JSON folder
-const MENTORS_JSON = path.join(DATA_DIR, "mentors.json"); 
+const MENTOR_DIR = path.join(process.cwd(), "uploads/home/mentors");
+const DATA_DIR = path.join(process.cwd(), "data/home");
+const MENTORS_JSON = path.join(DATA_DIR, "mentors.json");
 
-// ✅ Ensure mentors folder exists
-if (!fs.existsSync(MENTOR_DIR)) {
-  fs.mkdirSync(MENTOR_DIR, { recursive: true });
-}
+// Ensure folders exist
+if (!fs.existsSync(MENTOR_DIR)) fs.mkdirSync(MENTOR_DIR, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(MENTORS_JSON)) fs.writeFileSync(MENTORS_JSON, JSON.stringify([]));
 
-// ✅ Ensure mentors.json exists
-if (!fs.existsSync(MENTORS_JSON)) {
-  fs.writeFileSync(MENTORS_JSON, JSON.stringify([]));
-}
-
-// Multer config for images
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, MENTOR_DIR),
   filename: (req, file, cb) =>
@@ -38,16 +32,10 @@ const upload = multer({
 router.post("/upload", upload.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No image uploaded" });
 
-  const { name } = req.body;
-  if (!name || name.trim() === "") {
-    return res.status(400).json({ error: "Mentor name is required" });
-  }
-
   const mentorData = {
     id: Date.now(),
-    name: name.trim(),
     fileName: req.file.filename,
-    url: `http://localhost:5000/uploads/home/mentors/${req.file.filename}`,
+    url: `${process.env.SERVER_URL || "http://localhost:5000"}/uploads/home/mentors/${req.file.filename}`,
   };
 
   let existing = [];
@@ -73,7 +61,7 @@ router.get("/", (req, res) => {
   }
 });
 
-// 📌 Delete mentor by filename
+// 📌 Delete mentor
 router.delete("/:filename", (req, res) => {
   const { filename } = req.params;
   let mentors = JSON.parse(fs.readFileSync(MENTORS_JSON, "utf-8"));

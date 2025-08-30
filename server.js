@@ -4,7 +4,10 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import { fileURLToPath } from "url";
+import { fileURLToPath } from "url"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 dotenv.config();
 
@@ -21,8 +24,7 @@ app.use(
       "https://cf-user.vercel.app"
     ],
     credentials: true,
-    methods: ["GET", "POST", "DELETE", "PUT"],
-    allowedHeaders: ["Content-Type", "Range"],
+    methods: ["GET", "POST", "DELETE", "PUT"]
   })
 );
 
@@ -32,12 +34,9 @@ app.use(express.json());
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
 
-// ✅ Serve uploads folder
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-
 // ✅ Basic test route
-app.get("/api", (req, res) => {
-  res.send("API is running ✅");
+app.get("/", (req, res) => {
+  res.send("Backend is running 🚀");
 });
 
 // -------------------------
@@ -103,6 +102,8 @@ import StageUnrealDiploma from "./Routes/StageUnreal/StageUnrealDiploma.js";
 import StageUnrealMentor from "./Routes/StageUnreal/StageUnrealMentor.js";
 import StageUnrealFilmography from "./Routes/StageUnreal/StageUnrealFilmography.js";
 
+app.use("/uploads", express.static(path.join(__dirname, "uploads")))
+
 // ✅ Use routes
 app.use("/homebanner", HomeBanner);
 app.use("/exclusive", HomeExclusive);
@@ -163,12 +164,6 @@ app.use("/stageunrealbanner", StageUnrealBanner);
 app.use("/stageunrealdiploma", StageUnrealDiploma);
 app.use("/stageunrealmentor", StageUnrealMentor);
 app.use("/stageunrealfilmography", StageUnrealFilmography);
-
-// -------------------------
-// ✅ Serve React frontend (MUST be after API routes)
-// -------------------------
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // ✅ Connect to MongoDB
 mongoose
