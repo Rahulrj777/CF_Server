@@ -1,55 +1,87 @@
 import express from "express";
 import multer from "multer";
-import { Banner } from "../../Model/Acting/ActingBanner.js";
+import fs from "fs";
+import path from "path";
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
 
-// Upload banner (store image as Base64)
-router.post("/upload", upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+// 📁 Paths
+const UPLOADS_DIR = path.join(process.cwd(), "uploads/acting/banner"); 
+const DATA_DIR = path.join(process.cwd(), "data/acting");
+const BANNERS_JSON = path.join(DATA_DIR, "banner.json");
 
-    console.log("Uploaded file:", req.file); // ✅ Debug
+// ✅ Ensure uploads folder exists
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
 
-    const base64 = req.file.buffer.toString("base64");
-    const banner = new Banner({
-      url: `data:${req.file.mimetype};base64,${base64}`,
-      title: req.body.title || "Untitled",
-    });
+// ✅ Ensure data/acting folder exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
-    await banner.save();
-    console.log("Saved banner:", banner); // ✅ Debug
-    res.json(banner);
-  } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).json({ error: err.message });
-  }
+// ✅ Ensure banner.json exists
+if (!fs.existsSync(BANNERS_JSON)) {
+  fs.writeFileSync(BANNERS_JSON, JSON.stringify([]));
+}
+
+// Multer config
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) =>
+    cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, "_")),
 });
 
-// Get all banners
-router.get("/", async (req, res) => {
-  try {
-    const banners = await Banner.find().sort({ createdAt: -1 });
-    res.json(banners);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: err.message });
-  }
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed!"), false);
+  },
 });
 
-// Delete banner
-router.delete("/:id", async (req, res) => {
-  try {
-    const banner = await Banner.findById(req.params.id);
-    if (!banner) return res.status(404).json({ error: "Banner not found" });
+// 📌 Upload banner
+router.post("/upload", upload.single("image"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No image uploaded" });
 
-    await banner.remove();
+  const bannerData = {
+    id: Date.now(),
+    fileName: req.file.filename,
+    url: `http://localhost:5000/uploads/acting/banner/${req.file.filename}`,
+  };
+
+  let existing = [];
+  try {
+    existing = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
+  } catch {}
+
+  existing.push(bannerData);
+  fs.writeFileSync(BANNERS_JSON, JSON.stringify(existing, null, 2));
+
+  res.json(bannerData);
+});
+
+// 📌 Get all banners
+router.get("/", (req, res) => {
+  let banners = [];
+  try {
+    banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
+  } catch {}
+  res.json(banners);
+});
+
+// 📌 Delete banner by filename
+router.delete("/:filename", (req, res) => {
+  const { filename } = req.params;
+  let banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
+
+  banners = banners.filter((b) => b.fileName !== filename);
+  fs.writeFileSync(BANNERS_JSON, JSON.stringify(banners, null, 2));
+
+  fs.unlink(path.join(UPLOADS_DIR, filename), (err) => {
+    if (err) return res.status(500).json({ error: "Error deleting file" });
     res.json({ success: true, message: "Banner deleted successfully" });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: err.message });
-  }
+  });
 });
 
 export default router;

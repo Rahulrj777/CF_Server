@@ -105,9 +105,15 @@ import VirtualProductionDiploma from "./Routes/VirtualProduction/VirtualProducti
 
 // CFA
 import CfaBanner from './Routes/Cfa/CfaBanner.js'
+import CfaDiploma from "./Routes/Cfa/CfaDiploma.js"
+import CfaMentor from "./Routes/Cfa/CfaMentor.js"
+import CfaFilmography from "./Routes/Cfa/CfaFilmography.js"
 
 // VideoBanner
 import StageUnrealBanner from "./Routes/StageUnreal/StageUnrealBanner.js"
+import StageUnrealDiploma from './Routes/StageUnreal/StageUnrealDiploma.js'
+import StageUnrealMentor from './Routes/StageUnreal/StageUnrealMentor.js'
+import StageUnrealFilmography from './Routes/StageUnreal/StageUnrealFilmography.js'
 
 // ✅ Use routes
 app.use("/homebanner", HomeBanner);
@@ -161,8 +167,14 @@ app.use("/virtualproductionfilmography", VirtualProductionFilmography);
 app.use("/virtualproductiondiploma", VirtualProductionDiploma);
 
 app.use('/cfabanner', CfaBanner)
+app.use('/cfadiploma', CfaDiploma)
+app.use('/cfamentor', CfaMentor)
+app.use('/cfafilmography', CfaFilmography)
 
 app.use("/stageunrealbanner", StageUnrealBanner)
+app.use("/stageunrealdiploma", StageUnrealDiploma)
+app.use("/stageunrealmentor", StageUnrealMentor)
+app.use("/stageunrealfilmography", StageUnrealFilmography)
 
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
