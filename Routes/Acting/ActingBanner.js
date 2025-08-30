@@ -1,21 +1,17 @@
 import express from "express";
-import { getMulterUpload } from "../../Cloudinary/cloudinary.js";
 import { Banner } from "../../Model/Acting/ActingBanner.js";
-import { v2 as cloudinary } from "cloudinary";
 
 const router = express.Router();
-const upload = getMulterUpload("acting/banner"); // folder in Cloudinary
 
-// 📌 Upload banner
-router.post("/upload", upload.single("image"), async (req, res) => {
+// 📌 Upload banner (store locally in MongoDB)
+router.post("/upload", async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No image uploaded" });
+    const { url, title } = req.body; // front-end sends the image URL or path
+    if (!url) return res.status(400).json({ error: "No image URL provided" });
 
-    // Save record in MongoDB
     const banner = new Banner({
-      url: req.file.path,          // Cloudinary URL
-      public_id: req.file.filename, // Cloudinary public_id
-      title: req.body.title || "Untitled",
+      url,
+      title: title || "Untitled",
     });
 
     await banner.save();
@@ -35,17 +31,13 @@ router.get("/", async (req, res) => {
   }
 });
 
-// 📌 Delete banner
+// 📌 Delete banner (MongoDB only)
 router.delete("/:id", async (req, res) => {
   try {
     const banner = await Banner.findById(req.params.id);
     if (!banner) return res.status(404).json({ error: "Banner not found" });
 
-    // Delete from Cloudinary
-    await cloudinary.uploader.destroy(banner.public_id, { resource_type: "image" });
-
-    // Delete from MongoDB
-    await banner.remove();
+    await Banner.deleteOne({ _id: banner._id });
 
     res.json({ success: true, message: "Banner deleted successfully" });
   } catch (err) {
