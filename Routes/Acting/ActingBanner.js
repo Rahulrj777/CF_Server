@@ -3,16 +3,17 @@ import multer from "multer";
 import { Banner } from "../../Model/Acting/ActingBanner.js";
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() }); // store file in memory
+const upload = multer({ storage: multer.memoryStorage() });
 
-// Upload banner (store image as Base64 in MongoDB)
+// Upload banner (store image as Base64)
 router.post("/upload", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     const base64 = req.file.buffer.toString("base64");
+
     const banner = new Banner({
-      url: `data:${req.file.mimetype};base64,${base64}`, // store as Base64
+      url: `data:${req.file.mimetype};base64,${base64}`, // store Base64 in MongoDB
       title: req.body.title || "Untitled",
     });
 
@@ -30,6 +31,7 @@ router.get("/", async (req, res) => {
     const banners = await Banner.find().sort({ createdAt: -1 });
     res.json(banners);
   } catch (err) {
+    console.error(err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -43,6 +45,7 @@ router.delete("/:id", async (req, res) => {
     await banner.remove();
     res.json({ success: true, message: "Banner deleted successfully" });
   } catch (err) {
+    console.error(err.message);
     res.status(500).json({ error: err.message });
   }
 });
