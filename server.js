@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+import { fileURLToPath } from "url";
 
 dotenv.config();
 
@@ -166,11 +167,8 @@ app.use("/stageunrealfilmography", StageUnrealFilmography);
 // -------------------------
 // ✅ Serve React frontend (MUST be after API routes)
 // -------------------------
-app.use(express.static(path.join(__dirname, "/client/build")));
-
-app.get("/*", (req, res) => {
-  res.sendFile(path.resolve(__dirname, "client", "build", "index.html"));
-});
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ✅ Connect to MongoDB
 mongoose
