@@ -13,7 +13,7 @@ export const getMulterUpload = (folder = "uploads") => {
   const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: async (req, file) => {
-      let resource_type = "raw"; // default for PDF/text
+      let resource_type = "raw";
 
       if (file.mimetype.startsWith("image/")) resource_type = "image";
       else if (file.mimetype.startsWith("video/")) resource_type = "video";

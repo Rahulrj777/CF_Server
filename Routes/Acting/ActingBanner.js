@@ -1,69 +1,55 @@
-// Routes/Acting/ActingBanner.js
 import express from "express";
-import fs from "fs";
 import { getMulterUpload } from "../../Cloudinary/cloudinary.js";
+import { Banner } from "../../Model/Acting/ActingBanner.js";
 import { v2 as cloudinary } from "cloudinary";
 
 const router = express.Router();
-const DATA_DIR = "data/acting";
-const BANNERS_JSON = `${DATA_DIR}/banner.json`;
+const upload = getMulterUpload("acting/banner"); // folder in Cloudinary
 
-// ✅ Ensure data folder & JSON exist
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(BANNERS_JSON)) fs.writeFileSync(BANNERS_JSON, JSON.stringify([]));
-
-// Multer for Cloudinary
-const upload = getMulterUpload("acting/banner");
-
-// 📌 Upload banner to Cloudinary
+// 📌 Upload banner
 router.post("/upload", upload.single("image"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!req.file) return res.status(400).json({ error: "No image uploaded" });
 
-    // req.file.path contains the HTTPS Cloudinary URL
-    const banner = {
-      id: Date.now(),
+    // Save record in MongoDB
+    const banner = new Banner({
+      url: req.file.path,          // Cloudinary URL
       public_id: req.file.filename, // Cloudinary public_id
-      url: req.file.path,           // Cloudinary URL
-    };
+      title: req.body.title || "Untitled",
+    });
 
-    // Save to JSON
-    const banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
-    banners.push(banner);
-    fs.writeFileSync(BANNERS_JSON, JSON.stringify(banners, null, 2));
-
+    await banner.save();
     res.json(banner);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to upload banner" });
+    res.status(500).json({ error: err.message });
   }
 });
 
 // 📌 Get all banners
-router.get("/", (req, res) => {
-  let banners = [];
+router.get("/", async (req, res) => {
   try {
-    banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
-  } catch {}
-  res.json(banners);
+    const banners = await Banner.find().sort({ createdAt: -1 });
+    res.json(banners);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// 📌 Delete banner from Cloudinary
-router.delete("/:public_id", async (req, res) => {
-  const { public_id } = req.params;
-  let banners = JSON.parse(fs.readFileSync(BANNERS_JSON, "utf-8"));
-
-  banners = banners.filter((b) => b.public_id !== public_id);
-  fs.writeFileSync(BANNERS_JSON, JSON.stringify(banners, null, 2));
-
+// 📌 Delete banner
+router.delete("/:id", async (req, res) => {
   try {
-    await cloudinary.uploader.destroy(`acting/banner/${public_id}`, {
-      resource_type: "image",
-    });
+    const banner = await Banner.findById(req.params.id);
+    if (!banner) return res.status(404).json({ error: "Banner not found" });
+
+    // Delete from Cloudinary
+    await cloudinary.uploader.destroy(banner.public_id, { resource_type: "image" });
+
+    // Delete from MongoDB
+    await banner.remove();
+
     res.json({ success: true, message: "Banner deleted successfully" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error deleting file from Cloudinary" });
+    res.status(500).json({ error: err.message });
   }
 });
 
