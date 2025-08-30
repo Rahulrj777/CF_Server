@@ -13,7 +13,6 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-
 // ✅ Enable CORS for frontend
 app.use(
   cors({
@@ -35,9 +34,6 @@ app.use(express.json());
 // ✅ Ensure uploads folder exists
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
-
-// ✅ Serve static uploads
-app.use("/uploads", express.static(UPLOADS_DIR));
 
 // ✅ Basic route
 app.get("/", (req, res) => {
@@ -114,6 +110,9 @@ import StageUnrealBanner from "./Routes/StageUnreal/StageUnrealBanner.js"
 import StageUnrealDiploma from './Routes/StageUnreal/StageUnrealDiploma.js'
 import StageUnrealMentor from './Routes/StageUnreal/StageUnrealMentor.js'
 import StageUnrealFilmography from './Routes/StageUnreal/StageUnrealFilmography.js'
+
+// ✅ Serve uploads folder
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // ✅ Use routes
 app.use("/homebanner", HomeBanner);
